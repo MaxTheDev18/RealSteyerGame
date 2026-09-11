@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Steyer Clicker 2.0</title>
+  <style>
+    :root {
+      --bg-base: #1e1e2e;
+      --bg-surface: #181825;
+      --bg-mantle: #11111b;
+      --text-main: #cdd6f4;
+      --accent-green: #a6e3a1;
+      --accent-blue: #89b4fa;
+      --accent-purple: #cba6f7;
+      --accent-red: #f38ba8;
+      --accent-yellow: #f9e2af;
+      --accent-cyan: #94e2d5;
+      --subtext: #a6adc8;
+      --border: #45475a;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Courier New', Courier, monospace; }
+    body { background-color: var(--bg-base); color: var(--text-main); padding: 15px; }
+
+    header { text-align: center; margin-bottom: 15px; position: relative; }
+    h1 { color: var(--text-main); margin-bottom: 5px; text-shadow: 0 0 8px rgba(137, 180, 250, 0.4); }
+    .stat-main { font-size: 1.4rem; color: var(--accent-green); font-weight: bold; }
+    .stat-sub { font-size: 0.9rem; color: var(--accent-blue); font-style: italic; }
+
+    .header-btns {
+      margin-top: 8px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+    }
+
+    /* Clicker Area */
+    #clicker-area {
+      width: 320px;
+      height: 120px;
+      background: var(--bg-surface);
+      border: 2px solid var(--border);
+      margin: 10px auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      position: relative;
+      user-select: none;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
+    #clicker-btn {
+      width: 240px;
+      height: 90px;
+      background: var(--accent-blue);
+      color: var(--bg-mantle);
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      transition: transform 0.05s ease, background 0.3s ease;
+      text-align: center;
+      padding: 8px;
+    }
+    #clicker-btn img {
+      max-height: 100%;
+      max-width: 100%;
+      object-fit: contain;
+      pointer-events: none;
+      filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));
+    }
+    #clicker-area:active #clicker-btn { transform: scale(0.95); }
+
+    .floating-text {
+      position: absolute;
+      color: var(--accent-green);
+      font-weight: bold;
+      pointer-events: none;
+      animation: floatUp 0.6s ease-out forwards;
+      text-shadow: 0 0 4px rgba(0,0,0,0.8);
+    }
+    @keyframes floatUp {
+      0% { opacity: 1; transform: translateY(0); }
+      100% { opacity: 0; transform: translateY(-35px); }
+    }
+
+    /* Grid Layout */
+    .game-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .panel {
+      background: var(--bg-surface);
+      border: 2px solid var(--border);
+      padding: 10px;
+      border-radius: 6px;
+      display: flex;
+      flex-direction: column;
+      max-height: 720px;
+    }
+    .panel-title { color: var(--accent-yellow); font-size: 1rem; font-weight: bold; margin-bottom: 8px; border-bottom: 1px solid var(--border); padding-bottom: 4px; }
+
+    .scroll-container { overflow-y: auto; flex-grow: 1; padding-right: 5px; }
+
+    button.game-btn {
+      width: 100%;
+      background: var(--bg-mantle);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      padding: 8px;
+      margin-bottom: 6px;
+      text-align: left;
+      cursor: pointer;
+      border-radius: 4px;
+      transition: background 0.15s ease;
+    }
+    button.game-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.game-btn:hover:not(:disabled) { background: #313244; }
+
+    .inline-btn {
+      width: auto !important;
+      display: inline-block;
+      padding: 5px 12px !important;
+      margin: 0 !important;
+      text-align: center !important;
+    }
+
+    #terminal {
+      background: var(--bg-mantle);
+      color: var(--accent-green);
+      font-size: 0.75rem;
+      height: 100px;
+      overflow-y: auto;
+      padding: 5px;
+      border: 1px solid var(--border);
+      margin-bottom: 10px;
+    }
+
+    .account-inputs {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+
+    .account-inputs input {
+      background: var(--bg-mantle);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 6px;
+      border-radius: 4px;
+    }
+
+    .account-actions {
+      display: flex;
+      gap: 6px;
+      margin-bottom: 10px;
+    }
+
+    .disclaimer-banner {
+      background: rgba(166, 227, 161, 0.15);
+      border: 1px dashed var(--accent-green);
+      color: var(--accent-green);
+      padding: 6px 8px;
+      font-size: 0.75rem;
+      font-weight: bold;
+      text-align: center;
+      border-radius: 4px;
+      margin-bottom: 8px;
+      line-height: 1.2;
+    }
+
+    .lb-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #313244; font-size: 0.85rem; }
+    .lb-rank { width: 30px; color: var(--accent-purple); font-weight: bold; }
+    .lb-name { flex-grow: 1; color: var(--text-main); }
+    .lb-score { color: var(--accent-green); font-weight: bold; }
+
+    /* Tutorial Modal Overlay */
+    .tutorial-overlay {
+      position: fixed;
+      top: 0; left: 0; width: 100vw; height: 100vh;
+      background: rgba(0, 0, 0, 0.75);
+      z-index: 9999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .tutorial-card {
+      background: var(--bg-surface);
+      border: 2px solid var(--accent-yellow);
+      border-radius: 8px;
+      max-width: 480px;
+      width: 100%;
+      padding: 20px;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+    }
+
+    .tutorial-card h3 {
+      color: var(--accent-yellow);
+      margin-bottom: 10px;
+      font-size: 1.2rem;
+    }
+
+    .tutorial-card p {
+      font-size: 0.9rem;
+      line-height: 1.4;
+      color: var(--text-main);
+      margin-bottom: 15px;
+    }
+
+    .tut-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 15px;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    .tut-step-indicator {
+      font-size: 0.8rem;
+      color: var(--subtext);
+    }
+
+    @media (max-width: 900px) { .game-grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+  <!-- TUTORIAL MODAL -->
+  <div id="tutorial-overlay" class="tutorial-overlay" style="display: none;">
+    <div class="tutorial-card">
+      <h3 id="tut-title">Welcome to Steyer Clicker!</h3>
+      <p id="tut-desc">Step description goes here...</p>
+      <div class="tut-footer">
+        <span class="tut-step-indicator" id="tut-step-num">Step 1 of 5</span>
+        <div style="display: flex; gap: 6px;">
+          <button id="tut-btn-prev" class="game-btn inline-btn">Back</button>
+          <button id="tut-btn-next" class="game-btn inline-btn" style="background:var(--accent-green); color:var(--bg-mantle); font-weight:bold;">Next</button>
+          <button id="tut-btn-close" class="game-btn inline-btn" style="background:var(--accent-red); color:var(--bg-mantle);">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <header>
+    <h1>⚛️ Steyer Clicker 2.0 ⚛️</h1>
+    <div class="stat-main" id="lbl-joules">Energy: 0 J</div>
+    <div class="stat-sub" id="lbl-stats">Click Yield: 1 J | Energy Rate: 0 J/sec</div>
+    <div id="clicker-area">
+      <div id="clicker-btn">
+        <img id="clicker-img" src="geiger.png" alt="Steyer Counter">
+      </div>
+    </div>
+    <div class="header-btns">
+      <button id="btn-open-tutorial" class="game-btn inline-btn" style="background:var(--accent-purple); color:var(--bg-mantle); font-weight:bold;">📖 Lab Protocol (Tutorial)</button>
+    </div>
+  </header>
+
+  <div class="game-grid">
+    <!-- LEFT PANEL -->
+    <div class="panel">
+      <div class="panel-title">-- STEYER SKINS --</div>
+      <div class="scroll-container">
+        <div id="skins-container"></div>
+        <div class="panel-title" style="margin-top:10px;">-- SCIENTIFIC UPGRADES --</div>
+        <div id="upgrades-container"></div>
+      </div>
+    </div>
+
+    <!-- MIDDLE PANEL -->
+    <div class="panel">
+      <div class="panel-title">-- ACTIVE EXPERIMENTS & LAB APPARATUS --</div>
+      <div class="scroll-container" id="facilities-container">
+        <div style="color: var(--subtext); text-align: center; margin-top: 20px;">No apparatus built yet.</div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL -->
+    <div class="panel">
+      <div class="panel-title">-- SYSTEM TERMINAL LOG --</div>
+      <div id="terminal"></div>
+
+      <div class="panel-title">-- SCIENTIFIC REVOLUTION (REBIRTH) --</div>
+      <div style="margin-bottom: 10px;">
+        <div id="lbl-rebirth" style="font-size: 0.85rem; color: var(--accent-purple); margin-bottom: 4px;">Rebirths: 0 (1.0x Boost)</div>
+        <button id="btn-rebirth" class="game-btn" style="background: var(--accent-purple); color: var(--bg-mantle); text-align:center; font-weight:bold;">Paradigm Shift</button>
+      </div>
+
+      <div class="panel-title">-- ACCOUNT & CLOUD SAVE --</div>
+      <div class="account-inputs">
+        <input type="text" id="player-name" placeholder="Researcher ID (e.g. MarieCurie)" maxlength="12">
+        <input type="password" id="player-pin" placeholder="Access PIN (e.g. 1234)" maxlength="8">
+      </div>
+      <div class="account-actions">
+        <button id="btn-save-cloud" class="game-btn" style="background:var(--accent-green); color:var(--bg-mantle); font-weight:bold; text-align:center; margin:0;">Save Data</button>
+        <button id="btn-load-cloud" class="game-btn" style="background:var(--accent-blue); color:var(--bg-mantle); font-weight:bold; text-align:center; margin:0;">Load Data</button>
+      </div>
+
+      <div class="panel-title">-- GLOBAL RESEARCH LEADERBOARD --</div>
+      <div class="disclaimer-banner">
+        LEADERBOARD ACTIVE: Save data to publish total Joules generated!
+      </div>
+      <div class="scroll-container" id="leaderboard-container">
+        <div class="lb-row"><span class="lb-name">Connecting to research network...</span></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DREAMLO_PUBLIC_KEY = "6aa2cae78f40bb15a86e7234";
+    const DREAMLO_PRIVATE_KEY = "iRkhqJbpbkS5hYjUflu15QjJ5ZVfaIHka--OpQRIq2Fg";
+
+    let gameState = {
+      joules: 0,
+      clickPower: 1,
+      joulesPerSec: 0,
+      rebirths: 0,
+      totalJoulesEarned: 0,
+      totalClicks: 0,
+      activeSkinIdx: 0
+    };
+
+    document.getElementById('player-name').value = localStorage.getItem('physica_user') || '';
+    document.getElementById('player-pin').value = localStorage.getItem('physica_pin') || '';
+
+    // --- Steyer Counter Skins & Detector Upgrades ---
+    const skins = [
+      { name: "Default Steyer", img: "geiger.png", cost: 0, mult: 1, color: "#89b4fa", owned: true },
+      { name: "Sad Steyer", img: "SADGEIER.png", cost: 5000, mult: 2, color: "#74c7ec", owned: false },
+      { name: "Angy Steyer", img: "ANGYGEIGER.png", cost: 250000, mult: 5, color: "#f38ba8", owned: false },
+      { name: "Juandice Steyer", img: "JuandiceGeiger.png", cost: 10000000, mult: 15, color: "#f9e2af", owned: false },
+      { name: "Green Steyer", img: "GreenGeiger.png", cost: 500000000, mult: 50, color: "#a6e3a1", owned: false }
+    ];
+
+    // Array of upgrades across Physics, Chemistry, Biology, Geophysics, and Astrophysics
+    const upgradeList = [
+      ["Vernier Caliper", 15, "click", 1, "Mechanics"],
+      ["Graduate Lab Assistant", 50, "auto", 1, "General Science"],
+      ["Bunsen Burner", 100, "click", 3, "Thermodynamics / Chem"],
+      ["Petri Dish Culture", 250, "auto", 5, "Biology"],
+      ["Laser Interferometer", 500, "click", 8, "Optics / Physics"],
+      ["Superconducting Magnet", 2500, "auto", 15, "Electromagnetism"],
+      ["Seismograph Network", 10000, "auto", 40, "Geophysics"],
+      ["DNA Sequencer Array", 40000, "auto", 100, "Biophysics"],
+      ["Nuclear Fission Reactor", 120000, "auto", 250, "Nuclear Physics"],
+      ["Particle Accelerator", 800000, "auto", 1200, "Particle Physics"],
+      ["Quantum Computer Array", 2000000, "auto", 2500, "Quantum Physics"],
+      ["Deep Space Radio Array", 10000000, "auto", 8000, "Astrophysics"],
+      ["Dyson Swarm Collector", 50000000, "auto", 25000, "Cosmology"]
+    ];
+
+    let upgrades = upgradeList.map(([name, cost, type, power, category]) => ({
+      name, cost, baseCost: cost, type, power, category, count: 0
+    }));
+
+    // --- GUIDED TUTORIAL STEPS ---
+    const tutorialSteps = [
+      {
+        title: "1. Generate Joules of Energy!",
+        desc: "Click the Steyer button at the top to synthesize Joules (J). Energy is the fundamental currency of all physics and natural sciences!"
+      },
+      {
+        title: "2. Scientific Upgrades & Passive Generation",
+        desc: "Use your accumulated Joules to purchase upgrades. Tools like Vernier Calipers boost your click yield, while Lab Assistants and Reactors generate passive Joules per second!"
+      },
+      {
+        title: "3. Unlock Steyer Skins",
+        desc: "Save up Joules to unlock rare Steyer variants like Sad Steyer, Angy Steyer, Juandice Steyer, and Green Steyer! Higher tier detectors multiply all click yields."
+      },
+      {
+        title: "4. Cloud Research Network & Leaderboard",
+        desc: "Enter a Researcher Username and Secret Access PIN in the right panel, then click 'Save Data' to broadcast your scientific contributions to the global leaderboard!"
+      },
+      {
+        title: "5. Paradigm Shift (Rebirth)",
+        desc: "Accumulate massive lifetime energy to execute a Paradigm Shift! Reset your immediate laboratory apparatus in exchange for a permanent multiplier boost across all scientific disciplines!"
+      }
+    ];
+
+    let currentTutStep = 0;
+
+    function renderTutorialStep() {
+      const step = tutorialSteps[currentTutStep];
+      document.getElementById('tut-title').innerText = step.title;
+      document.getElementById('tut-desc').innerText = step.desc;
+      document.getElementById('tut-step-num').innerText = `Step ${currentTutStep + 1} of ${tutorialSteps.length}`;
+      document.getElementById('tut-btn-prev').style.display = currentTutStep === 0 ? 'none' : 'inline-block';
+      document.getElementById('tut-btn-next').innerText = currentTutStep === tutorialSteps.length - 1 ? 'Finish' : 'Next';
+    }
+
+    function openTutorial() {
+      currentTutStep = 0;
+      renderTutorialStep();
+      document.getElementById('tutorial-overlay').style.display = 'flex';
+    }
+
+    function closeTutorial() {
+      document.getElementById('tutorial-overlay').style.display = 'none';
+      localStorage.setItem('physica_tut_done', 'true');
+    }
+
+    document.getElementById('tut-btn-next').addEventListener('click', () => {
+      if (currentTutStep < tutorialSteps.length - 1) {
+        currentTutStep++;
+        renderTutorialStep();
+      } else {
+        closeTutorial();
+      }
+    });
+
+    document.getElementById('tut-btn-prev').addEventListener('click', () => {
+      if (currentTutStep > 0) {
+        currentTutStep--;
+        renderTutorialStep();
+      }
+    });
+
+    document.getElementById('tut-btn-close').addEventListener('click', closeTutorial);
+    document.getElementById('btn-open-tutorial').addEventListener('click', openTutorial);
+
+    // Auto-open tutorial on first visit
+    if (!localStorage.getItem('physica_tut_done')) {
+      openTutorial();
+    }
+
+    function getRebirthCost() { return 1000000000 * Math.pow(10, gameState.rebirths); }
+    function getRebirthMultiplier() { return 1.0 + (gameState.rebirths * 1.5); }
+    function getEffectiveClickPower() { return Math.floor(gameState.clickPower * skins[gameState.activeSkinIdx].mult * getRebirthMultiplier()); }
+
+    function logTerminal(msg) {
+      const term = document.getElementById('terminal');
+      const time = new Date().toLocaleTimeString();
+      term.innerHTML += `<div>[${time}] ${msg}</div>`;
+      term.scrollTop = term.scrollHeight;
+    }
+
+    function updateUI() {
+      const effectiveLps = Math.floor(gameState.joulesPerSec * getRebirthMultiplier());
+      document.getElementById('lbl-joules').innerText = `Energy: ${gameState.joules.toLocaleString()} J`;
+      document.getElementById('lbl-stats').innerText = `Click Yield: ${getEffectiveClickPower().toLocaleString()} J | Energy Rate: ${effectiveLps.toLocaleString()} J/sec`;
+
+      const skinsContainer = document.getElementById('skins-container');
+      skinsContainer.innerHTML = '';
+      skins.forEach((skin, idx) => {
+        const btn = document.createElement('button');
+        btn.className = 'game-btn';
+        if (skin.owned) {
+          const isEquipped = gameState.activeSkinIdx === idx;
+          btn.innerText = `${skin.name} (${skin.mult}x Yield) [${isEquipped ? 'EQUIPPED' : 'EQUIP'}]`;
+          btn.disabled = isEquipped;
+          btn.onclick = () => { gameState.activeSkinIdx = idx; updateSkinVisual(); updateUI(); };
+        } else {
+          btn.innerText = `${skin.name} (${skin.mult}x Yield)\nCost: ${skin.cost.toLocaleString()} J`;
+          btn.disabled = gameState.joules < skin.cost;
+          btn.onclick = () => {
+            if (gameState.joules >= skin.cost) {
+              gameState.joules -= skin.cost;
+              skin.owned = true;
+              gameState.activeSkinIdx = idx;
+              logTerminal(`Unlocked Steyer Skin: ${skin.name}`);
+              updateSkinVisual();
+              updateUI();
+            }
+          };
+        }
+        skinsContainer.appendChild(btn);
+      });
+
+      const upgContainer = document.getElementById('upgrades-container');
+      upgContainer.innerHTML = '';
+      upgrades.forEach((item) => {
+        const btn = document.createElement('button');
+        btn.className = 'game-btn';
+        const effPower = Math.floor(item.power * getRebirthMultiplier());
+        const effectStr = item.type === 'click' ? `+${effPower.toLocaleString()} J/click` : `+${effPower.toLocaleString()} J/sec`;
+        btn.innerText = `${item.name} [${item.category}]\n${effectStr} | Cost: ${item.cost.toLocaleString()} J | Owned: ${item.count}`;
+        btn.disabled = gameState.joules < item.cost;
+        btn.onclick = () => {
+          if (gameState.joules >= item.cost) {
+            gameState.joules -= item.cost;
+            item.count++;
+            if (item.type === 'click') gameState.clickPower += item.power;
+            else gameState.joulesPerSec += item.power;
+            item.cost = Math.floor(item.cost * 1.45);
+            logTerminal(`Deployed Experiment: ${item.name}`);
+            renderFacilities();
+            updateUI();
+          }
+        };
+        upgContainer.appendChild(btn);
+      });
+
+      const rCost = getRebirthCost();
+      const canRebirth = gameState.totalJoulesEarned >= rCost;
+      document.getElementById('lbl-rebirth').innerText = `Rebirths: ${gameState.rebirths} (${getRebirthMultiplier().toFixed(1)}x Boost)`;
+      const rBtn = document.getElementById('btn-rebirth');
+      rBtn.innerText = `Paradigm Shift\nCost: ${rCost.toLocaleString()} Lifetime Joules`;
+      rBtn.disabled = !canRebirth;
+    }
+
+    function updateSkinVisual() {
+      const activeSkin = skins[gameState.activeSkinIdx];
+      const clickerBtn = document.getElementById('clicker-btn');
+      const clickerImg = document.getElementById('clicker-img');
+      clickerBtn.style.background = activeSkin.color;
+      clickerImg.src = activeSkin.img;
+      clickerImg.alt = activeSkin.name;
+    }
+
+    function renderFacilities() {
+      const container = document.getElementById('facilities-container');
+      container.innerHTML = '';
+      let hasBuilding = false;
+      upgrades.forEach(item => {
+        if (item.count > 0) {
+          hasBuilding = true;
+          const div = document.createElement('div');
+          div.style.cssText = "background:var(--bg-mantle); padding:6px; border:1px solid var(--border); margin-bottom:5px; border-radius:4px;";
+          div.innerHTML = `<strong>${item.name}</strong> (${item.category}) x${item.count}`;
+          container.appendChild(div);
+        }
+      });
+      if (!hasBuilding) container.innerHTML = '<div style="color: var(--subtext); text-align: center; margin-top: 20px;">No apparatus built yet.</div>';
+    }
+
+    const clickerArea = document.getElementById('clicker-area');
+    clickerArea.addEventListener('click', (e) => {
+      const earned = getEffectiveClickPower();
+      gameState.joules += earned;
+      gameState.totalJoulesEarned += earned;
+      gameState.totalClicks++;
+
+      const rect = clickerArea.getBoundingClientRect();
+      const floatTxt = document.createElement('div');
+      floatTxt.className = 'floating-text';
+      floatTxt.innerText = `+${earned.toLocaleString()} J`;
+      floatTxt.style.left = `${e.clientX - rect.left}px`;
+      floatTxt.style.top = `${e.clientY - rect.top}px`;
+      clickerArea.appendChild(floatTxt);
+      setTimeout(() => floatTxt.remove(), 600);
+
+      updateUI();
+    });
+
+    document.getElementById('btn-rebirth').addEventListener('click', () => {
+      if (gameState.totalJoulesEarned >= getRebirthCost()) {
+        if (confirm("Execute Paradigm Shift? Reset active experiments and apparatus in exchange for a permanent scientific production multiplier!")) {
+          gameState.rebirths++;
+          gameState.joules = 0;
+          gameState.clickPower = 1;
+          gameState.joulesPerSec = 0;
+          gameState.activeSkinIdx = 0;
+          skins.forEach((s, idx) => s.owned = idx === 0);
+          upgrades.forEach(u => { u.count = 0; u.cost = u.baseCost; });
+          logTerminal(`PARADIGM SHIFT COMPLETED! New multiplier: ${getRebirthMultiplier().toFixed(1)}x`);
+          renderFacilities();
+          updateSkinVisual();
+          updateUI();
+        }
+      }
+    });
+
+    setInterval(() => {
+      if (gameState.joulesPerSec > 0) {
+        const passive = Math.floor(gameState.joulesPerSec * getRebirthMultiplier());
+        gameState.joules += passive;
+        gameState.totalJoulesEarned += passive;
+        updateUI();
+      }
+    }, 1000);
+
+    // --- DREAMLO LEADERBOARD & CLOUD SAVE SYSTEM ---
+    async function fetchDreamloScores() {
+      const url = `https://www.dreamlo.com/lb/${DREAMLO_PUBLIC_KEY}/json`;
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error("Network response error");
+        const data = await response.json();
+        const lbContainer = document.getElementById('leaderboard-container');
+        lbContainer.innerHTML = '';
+
+        if (!data || !data.dreamlo || !data.dreamlo.leaderboard || !data.dreamlo.leaderboard.entry) {
+          lbContainer.innerHTML = '<div class="lb-row"><span>No data recorded yet. Be the first researcher!</span></div>';
+          return [];
+        }
+
+        let entries = data.dreamlo.leaderboard.entry;
+        if (!Array.isArray(entries)) entries = [entries];
+
+        entries.forEach((entry, idx) => {
+          const row = document.createElement('div');
+          row.className = 'lb-row';
+          row.innerHTML = `<span class="lb-rank">#${idx + 1}</span><span class="lb-name">${entry.name}</span><span class="lb-score">${parseInt(entry.score).toLocaleString()} J</span>`;
+          lbContainer.appendChild(row);
+        });
+
+        return entries;
+      } catch (err) {
+        logTerminal("Error connecting to leaderboard network.");
+        return [];
+      }
+    }
+
+    async function saveProgressCloud() {
+      const user = document.getElementById('player-name').value.trim();
+      const pin = document.getElementById('player-pin').value.trim();
+
+      if (!user || !pin) {
+        alert("Please enter both a Researcher Username and an Access PIN to save data!");
+        return;
+      }
+
+      const safeUser = encodeURIComponent(user.replace(/[^a-zA-Z0-9_-]/g, ''));
+      
+      localStorage.setItem('physica_user', user);
+      localStorage.setItem('physica_pin', pin);
+
+      const entries = await fetchDreamloScores();
+      if (entries && entries.length > 0) {
+        const existing = entries.find(e => e.name.toLowerCase() === user.toLowerCase());
+        if (existing && existing.text) {
+          try {
+            const decodedText = decodeURIComponent(atob(existing.text));
+            const parsed = JSON.parse(decodedText);
+            if (parsed.pin && parsed.pin !== pin) {
+              alert("ERROR: This Researcher Username is locked by another access PIN!");
+              logTerminal("Save failed: Unauthorized PIN for user.");
+              return;
+            }
+          } catch(e){}
+        }
+      }
+
+      const payload = JSON.stringify({
+        pin: pin,
+        joules: gameState.joules,
+        clickPower: gameState.clickPower,
+        joulesPerSec: gameState.joulesPerSec,
+        rebirths: gameState.rebirths,
+        totalJoulesEarned: gameState.totalJoulesEarned,
+        activeSkinIdx: gameState.activeSkinIdx,
+        skinsOwned: skins.map(s => s.owned),
+        upgradesCounts: upgrades.map(u => u.count)
+      });
+
+      const base64Data = btoa(unescape(encodeURIComponent(payload)));
+      const encodedData = encodeURIComponent(base64Data);
+      const url = `https://www.dreamlo.com/lb/${DREAMLO_PRIVATE_KEY}/add-json/${safeUser}/${gameState.totalJoulesEarned}/0/${encodedData}`;
+
+      try {
+        await fetch(url, { mode: 'no-cors' });
+        logTerminal(`Data saved! Leaderboard updated for ${user}.`);
+        setTimeout(fetchDreamloScores, 1200);
+      } catch (err) {
+        logTerminal("Failed to reach Cloud server.");
+      }
+    }
+
+    async function loadProgressCloud() {
+      const user = document.getElementById('player-name').value.trim();
+      const pin = document.getElementById('player-pin').value.trim();
+
+      if (!user || !pin) {
+        alert("Please enter your Researcher Username and Access PIN to load save data!");
+        return;
+      }
+
+      logTerminal(`Searching research cloud for ${user}...`);
+      const entries = await fetchDreamloScores();
+      if (!entries || entries.length === 0) {
+        alert("No research save data found!");
+        return;
+      }
+
+      const existing = entries.find(e => e.name.toLowerCase() === user.toLowerCase());
+      if (!existing || !existing.text) {
+        alert("No research save data found for this Username!");
+        logTerminal("Cloud load failed: User record missing.");
+        return;
+      }
+
+      try {
+        const decodedText = decodeURIComponent(atob(existing.text));
+        const decoded = JSON.parse(decodedText);
+        if (decoded.pin !== pin) {
+          alert("ERROR: Incorrect Access PIN for this Researcher ID!");
+          logTerminal("Load failed: Access denied (Invalid PIN).");
+          return;
+        }
+
+        gameState.joules = decoded.joules || decoded.loc || 0;
+        gameState.clickPower = decoded.clickPower || 1;
+        gameState.joulesPerSec = decoded.joulesPerSec || decoded.locPerSec || 0;
+        gameState.rebirths = decoded.rebirths || 0;
+        gameState.totalJoulesEarned = decoded.totalJoulesEarned || decoded.totalLocEarned || 0;
+        gameState.activeSkinIdx = decoded.activeSkinIdx || 0;
+
+        if (decoded.skinsOwned) {
+          decoded.skinsOwned.forEach((owned, idx) => { if (skins[idx]) skins[idx].owned = owned; });
+        }
+
+        if (decoded.upgradesCounts) {
+          decoded.upgradesCounts.forEach((count, idx) => {
+            if (upgrades[idx]) {
+              upgrades[idx].count = count;
+              upgrades[idx].cost = Math.floor(upgrades[idx].baseCost * Math.pow(1.45, count));
+            }
+          });
+        }
+
+        localStorage.setItem('physica_user', user);
+        localStorage.setItem('physica_pin', pin);
+
+        logTerminal(`Welcome back, Dr. ${user}! Laboratory data synchronized.`);
+        renderFacilities();
+        updateSkinVisual();
+        updateUI();
+      } catch (e) {
+        alert("Failed to parse scientific cloud data.");
+        logTerminal("Corrupted research save record.");
+      }
+    }
+
+    document.getElementById('btn-save-cloud').addEventListener('click', saveProgressCloud);
+    document.getElementById('btn-load-cloud').addEventListener('click', loadProgressCloud);
+
+    logTerminal("Laboratory system online. Steyer counter active.");
+    updateSkinVisual();
+    updateUI();
+    fetchDreamloScores();
+    setInterval(fetchDreamloScores, 15000);
+  </script>
+</body>
+</html>
