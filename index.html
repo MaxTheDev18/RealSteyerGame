@@ -346,6 +346,51 @@ button:hover {
     opacity: 0.9;
 }
 
+.auth-box {
+    margin-top: 15px;
+    padding: 12px;
+    background: #24243a;
+    border: 1px solid #45475a;
+    border-radius: 10px;
+}
+
+.auth-box input {
+    width: 100%;
+    padding: 9px 10px;
+    margin-bottom: 8px;
+    border: 1px solid #45475a;
+    border-radius: 7px;
+    background: #313244;
+    color: #cdd6f4;
+    outline: none;
+}
+
+.auth-box input:focus {
+    border-color: #cba6f7;
+}
+
+.auth-buttons {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+.auth-status {
+    font-size: 13px;
+    color: #a6adc8;
+    margin-bottom: 8px;
+}
+
+.auth-status.signed-in {
+    color: #a6e3a1;
+}
+
+.auth-error {
+    color: #f38ba8;
+    font-size: 12px;
+    margin-top: 8px;
+}
+
 .submit-button {
     margin-top: 8px;
 }
@@ -443,6 +488,19 @@ button:hover {
 
         <div id="skins"></div>
 
+        <div class="auth-box">
+            <h2>Account</h2>
+            <div id="authStatus" class="auth-status">Not signed in</div>
+            <input id="usernameInput" type="text" maxlength="20" placeholder="Username">
+            <input id="passwordInput" type="password" autocomplete="new-password" placeholder="Password (6+ characters)">
+            <div class="auth-buttons">
+                <button id="createAccountButton" type="button">Create Account</button>
+                <button id="signInButton" type="button">Sign In</button>
+                <button id="signOutButton" type="button" style="display:none;">Sign Out</button>
+            </div>
+            <div id="authError" class="auth-error"></div>
+        </div>
+
         <div class="leaderboard">
 
             <h2>Leaderboard</h2>
@@ -452,8 +510,8 @@ button:hover {
             </div>
 
             <button
+                id="submitScoreButton"
                 class="submit-button"
-                onclick="submitScore()"
             >
                 Submit Score
             </button>
@@ -620,7 +678,7 @@ const upgrades = [
         type: "auto",
         power: 15,
         category: "Electromagnetism",
-        img: null,
+        img: "SteyerMagnet.png",
         count: 0
     },
 
@@ -733,6 +791,49 @@ const menuClickSound =
    AUDIO
 ========================================================= */
 
+/* =========================================================
+   RELIABLE AUDIO
+========================================================= */
+
+/*
+   Sound effects use fresh Audio instances instead of repeatedly
+   restarting one <audio> element. This prevents rapid clicks and
+   overlapping menu sounds from cutting each other off.
+*/
+
+let audioUnlocked = false;
+
+function unlockAudio() {
+
+    if (audioUnlocked) {
+        return;
+    }
+
+    audioUnlocked = true;
+
+    [clickSound, menuSound, menuClickSound].forEach(audio => {
+
+        if (!audio) {
+            return;
+        }
+
+        try {
+            audio.load();
+        } catch (error) {
+            console.log("Audio preload error:", error);
+        }
+
+    });
+
+}
+
+/*
+   The first real user gesture unlocks audio in browsers that
+   restrict autoplay. After that, hover sounds can play normally.
+*/
+document.addEventListener("pointerdown", unlockAudio, { once: true });
+document.addEventListener("keydown", unlockAudio, { once: true });
+
 function playAudio(audio) {
 
     if (!audio) {
@@ -741,14 +842,26 @@ function playAudio(audio) {
 
     try {
 
-        audio.pause();
+        const sound = new Audio(audio.currentSrc || audio.src);
+        sound.preload = "auto";
+        sound.volume = audio.volume;
 
-        audio.currentTime = 0;
+        sound.addEventListener(
+            "ended",
+            () => sound.remove(),
+            { once: true }
+        );
 
-        const promise = audio.play();
+        const promise = sound.play();
 
         if (promise !== undefined) {
-            promise.catch(() => {});
+            promise.catch(error => {
+                /*
+                   Autoplay restrictions can block hover audio before
+                   the first user interaction. Do not break the game.
+                */
+                console.log("Audio playback blocked:", error);
+            });
         }
 
     } catch (error) {
@@ -1644,76 +1757,510 @@ function resetGame() {
 
 
 /* =========================================================
-   DREAMLO LEADERBOARD
+   FIREBASE LEADERBOARD
 ========================================================= */
 
-const DREAMLO_PUBLIC_KEY =
-    "6aa2cae78f40bb15a86e7234";
+const leaderboardElement =
+    document.getElementById("leaderboard");
 
 
-async function loadLeaderboard() {
+/*
+   Firebase leaderboard functions are defined in the
+   module script below.
 
-    const leaderboard =
-        document.getElementById(
-            "leaderboard"
+   The module script exposes:
+   - window.loadLeaderboard()
+   - window.submitScore()
+*/
+
+/* =========================================================
+   START GAME
+========================================================= */
+
+loadGame();
+
+renderUpgrades();
+
+renderFacilities();
+
+renderSkins();
+
+updateUI();
+
+</script>
+<script type="module">
+
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+
+    import {
+        getAuth,
+        createUserWithEmailAndPassword,
+        signInWithEmailAndPassword,
+        onAuthStateChanged,
+        signOut
+    } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+
+    import {
+        getFirestore,
+        collection,
+        query,
+        orderBy,
+        limit,
+        getDocs,
+        doc,
+        getDoc,
+        setDoc,
+        serverTimestamp
+    } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+
+    /* =========================================================
+       FIREBASE CONFIG
+    ========================================================= */
+
+    const firebaseConfig = {
+
+        apiKey:
+            "AIzaSyAh-ooeezdqj-XB3C6smhen4v0boVeW1FY",
+
+        authDomain:
+            "steyerclicker.firebaseapp.com",
+
+        projectId:
+            "steyerclicker",
+
+        storageBucket:
+            "steyerclicker.firebasestorage.app",
+
+        messagingSenderId:
+            "135359423456",
+
+        appId:
+            "1:135359423456:web:88a528c2a08cfccf268185",
+
+        measurementId:
+            "G-ZW6HJNY4JX"
+
+    };
+
+
+    /* =========================================================
+       INITIALIZE FIREBASE / FIRESTORE
+    ========================================================= */
+
+    const app =
+        initializeApp(firebaseConfig);
+
+    const db =
+        getFirestore(app);
+
+    const auth =
+        getAuth(app);
+
+
+    /* =========================================================
+       ACCOUNT ELEMENTS
+    ========================================================= */
+
+    const authStatus =
+        document.getElementById("authStatus");
+
+    const usernameInput =
+        document.getElementById("usernameInput");
+
+    const passwordInput =
+        document.getElementById("passwordInput");
+
+    const createAccountButton =
+        document.getElementById("createAccountButton");
+
+    const signInButton =
+        document.getElementById("signInButton");
+
+    const signOutButton =
+        document.getElementById("signOutButton");
+
+    const authError =
+        document.getElementById("authError");
+
+
+    /* =========================================================
+       LEADERBOARD ELEMENT
+    ========================================================= */
+
+    const leaderboardElement =
+        document.getElementById("leaderboard");
+
+    const submitScoreButton =
+        document.getElementById("submitScoreButton");
+
+
+    /* =========================================================
+       ACCOUNT / USERNAME HELPERS
+    ========================================================= */
+
+    const USERNAME_STORAGE_KEY =
+        "steyerClickerLeaderboardUsername";
+
+    function normalizeUsername(username) {
+
+        return username
+            .trim()
+            .toLowerCase();
+
+    }
+
+    function usernameToDocumentId(username) {
+
+        return encodeURIComponent(
+            normalizeUsername(username)
         );
 
+    }
 
-    try {
+    /*
+       Firebase Authentication normally uses an email address.
+       The player only sees a username; the game creates an
+       internal Firebase email from that username so the player
+       can sign in with username + password.
+    */
 
-        const response =
-            await fetch(
-                `https://dreamlo.com/lb/${DREAMLO_PUBLIC_KEY}/json`
-            );
+    function usernameToAuthEmail(username) {
 
+        return `${normalizeUsername(username)}@steyerclicker.firebaseapp.com`;
 
-        if (!response.ok) {
+    }
 
-            throw new Error(
-                "Leaderboard unavailable"
-            );
+    function validUsername(username) {
+
+        return /^[A-Za-z0-9_-]{3,20}$/.test(username);
+
+    }
+
+    function clearAuthError() {
+
+        authError.textContent = "";
+
+    }
+
+    function showAuthError(message) {
+
+        authError.textContent = message;
+
+    }
+
+    function authErrorMessage(error) {
+
+        switch (error.code) {
+
+            case "auth/email-already-in-use":
+                return "That username is already registered.";
+
+            case "auth/invalid-credential":
+            case "auth/wrong-password":
+            case "auth/user-not-found":
+                return "Incorrect username or password.";
+
+            case "auth/weak-password":
+                return "Password must be at least 6 characters.";
+
+            case "auth/too-many-requests":
+                return "Too many attempts. Please wait and try again.";
+
+            case "auth/network-request-failed":
+                return "Network error. Check your internet connection.";
+
+            default:
+                return error.message || "Account operation failed.";
 
         }
 
-
-        const data =
-            await response.json();
+    }
 
 
-        leaderboard.innerHTML = "";
+    /* =========================================================
+       AUTH STATE
+    ========================================================= */
 
+    onAuthStateChanged(auth, async (user) => {
 
-        let entries = [];
+        clearAuthError();
 
+        if (!user) {
 
-        if (
-            data &&
-            data.dreamlo &&
-            data.dreamlo.leaderboard &&
-            data.dreamlo.leaderboard.entry
-        ) {
-
-            entries =
-                Array.isArray(
-                    data.dreamlo.leaderboard.entry
-                )
-                ? data.dreamlo.leaderboard.entry
-                : [
-                    data.dreamlo.leaderboard.entry
-                ];
+            authStatus.textContent = "Not signed in";
+            authStatus.classList.remove("signed-in");
+            usernameInput.disabled = false;
+            passwordInput.disabled = false;
+            createAccountButton.style.display = "inline-block";
+            signInButton.style.display = "inline-block";
+            signOutButton.style.display = "none";
+            return;
 
         }
 
+        try {
 
-        entries
-            .sort(
-                (a, b) =>
-                    Number(b.score) -
-                    Number(a.score)
-            )
-            .slice(0, 10)
-            .forEach(
-                (entry, index) => {
+            const playerRef =
+                doc(db, "leaderboard", user.uid);
+
+            const playerSnapshot =
+                await getDoc(playerRef);
+
+            const data =
+                playerSnapshot.exists()
+                    ? playerSnapshot.data()
+                    : null;
+
+            const username =
+                data?.username ||
+                localStorage.getItem(USERNAME_STORAGE_KEY) ||
+                "Player";
+
+            usernameInput.value = username;
+            passwordInput.value = "";
+
+            localStorage.setItem(
+                USERNAME_STORAGE_KEY,
+                username
+            );
+
+            authStatus.textContent =
+                `Signed in as ${username}`;
+
+            authStatus.classList.add("signed-in");
+            usernameInput.disabled = true;
+            passwordInput.disabled = true;
+            createAccountButton.style.display = "none";
+            signInButton.style.display = "none";
+            signOutButton.style.display = "inline-block";
+
+        } catch (error) {
+
+            console.error("Could not load account:", error);
+            showAuthError("Signed in, but the player profile could not be loaded.");
+
+        }
+
+        await loadLeaderboard();
+
+    });
+
+
+    /* =========================================================
+       CREATE ACCOUNT
+    ========================================================= */
+
+    async function createAccount() {
+
+        clearAuthError();
+
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value;
+
+        if (!validUsername(username)) {
+            showAuthError("Username must be 3–20 characters using only letters, numbers, _ or -.");
+            return;
+        }
+
+        if (password.length < 6) {
+            showAuthError("Password must be at least 6 characters.");
+            return;
+        }
+
+        const email = usernameToAuthEmail(username);
+
+        try {
+
+            createAccountButton.disabled = true;
+            signInButton.disabled = true;
+
+            const credential =
+                await createUserWithEmailAndPassword(
+                    auth,
+                    email,
+                    password
+                );
+
+            await setDoc(
+                doc(db, "leaderboard", credential.user.uid),
+                {
+                    uid: credential.user.uid,
+                    username: username,
+                    score: Math.floor(Number(gameState.joules)) || 0,
+                    updatedAt: serverTimestamp()
+                }
+            );
+
+            localStorage.setItem(
+                USERNAME_STORAGE_KEY,
+                username
+            );
+
+            passwordInput.value = "";
+
+            alert("Account created and signed in!");
+            await loadLeaderboard();
+
+        } catch (error) {
+
+            console.error("Account creation error:", error);
+            showAuthError(authErrorMessage(error));
+
+            try {
+                if (auth.currentUser) {
+                    await signOut(auth);
+                }
+            } catch (_) {}
+
+        } finally {
+
+            createAccountButton.disabled = false;
+            signInButton.disabled = false;
+
+        }
+
+    }
+
+
+    /* =========================================================
+       SIGN IN
+    ========================================================= */
+
+    async function signIn() {
+
+        clearAuthError();
+
+        const username = usernameInput.value.trim();
+        const password = passwordInput.value;
+
+        if (!validUsername(username)) {
+            showAuthError("Enter a valid username (3–20 letters, numbers, _ or -).");
+            return;
+        }
+
+        if (!password) {
+            showAuthError("Enter your password.");
+            return;
+        }
+
+        try {
+
+            createAccountButton.disabled = true;
+            signInButton.disabled = true;
+
+            await signInWithEmailAndPassword(
+                auth,
+                usernameToAuthEmail(username),
+                password
+            );
+
+            localStorage.setItem(
+                USERNAME_STORAGE_KEY,
+                username
+            );
+
+            passwordInput.value = "";
+
+        } catch (error) {
+
+            console.error("Sign-in error:", error);
+            showAuthError(authErrorMessage(error));
+
+        } finally {
+
+            createAccountButton.disabled = false;
+            signInButton.disabled = false;
+
+        }
+
+    }
+
+
+    /* =========================================================
+       SIGN OUT
+    ========================================================= */
+
+    async function signOutPlayer() {
+
+        clearAuthError();
+
+        try {
+            await signOut(auth);
+        } catch (error) {
+            console.error("Sign-out error:", error);
+            showAuthError("Could not sign out.");
+        }
+
+    }
+
+
+    createAccountButton.addEventListener(
+        "click",
+        createAccount
+    );
+
+    signInButton.addEventListener(
+        "click",
+        signIn
+    );
+
+    signOutButton.addEventListener(
+        "click",
+        signOutPlayer
+    );
+
+
+    /* =========================================================
+       LOAD LEADERBOARD
+    ========================================================= */
+
+    async function loadLeaderboard() {
+
+        leaderboardElement.textContent =
+            "Loading...";
+
+        try {
+
+            const leaderboardQuery =
+                query(
+                    collection(
+                        db,
+                        "leaderboard"
+                    ),
+                    orderBy(
+                        "score",
+                        "desc"
+                    ),
+                    limit(10)
+                );
+
+
+            const snapshot =
+                await getDocs(
+                    leaderboardQuery
+                );
+
+
+            leaderboardElement.innerHTML = "";
+
+
+            if (snapshot.empty) {
+
+                leaderboardElement.textContent =
+                    "No scores yet.";
+
+                return;
+
+            }
+
+
+            snapshot.forEach(
+                (documentSnapshot, index) => {
+
+                    const data =
+                        documentSnapshot.data();
+
 
                     const div =
                         document.createElement(
@@ -1730,7 +2277,9 @@ async function loadLeaderboard() {
                         );
 
                     name.textContent =
-                        `${index + 1}. ${entry.name}`;
+                        `${index + 1}. ${
+                            data.username || "Unknown"
+                        }`;
 
 
                     const score =
@@ -1741,7 +2290,7 @@ async function loadLeaderboard() {
                     score.textContent =
                         formatNumber(
                             Number(
-                                entry.score
+                                data.score || 0
                             )
                         );
 
@@ -1750,111 +2299,140 @@ async function loadLeaderboard() {
 
                     div.appendChild(score);
 
-                    leaderboard.appendChild(
+                    leaderboardElement.appendChild(
                         div
                     );
 
                 }
             );
 
+        } catch (error) {
 
-        if (
-            entries.length === 0
-        ) {
+            console.error(
+                "Firebase leaderboard error:",
+                error
+            );
 
-            leaderboard.textContent =
-                "No scores yet.";
+            leaderboardElement.textContent =
+                "Leaderboard unavailable. Check your Firebase Firestore setup and rules.";
 
         }
 
-    } catch (error) {
-
-        leaderboard.textContent =
-            "Leaderboard unavailable.";
-
-    }
-
-}
-
-
-/* =========================================================
-   SUBMIT SCORE
-========================================================= */
-
-async function submitScore() {
-
-    const name =
-        prompt(
-            "Enter your name:"
-        );
-
-
-    if (!name) {
-
-        return;
-
     }
 
 
-    const safeName =
-        encodeURIComponent(
-            name.substring(
-                0,
-                20
-            )
-        );
+    /* =========================================================
+       SUBMIT SCORE
+    ========================================================= */
 
+    async function submitScore() {
 
-    const score =
-        Math.floor(
-            gameState.joules
-        );
+        const user = auth.currentUser;
 
+        if (!user) {
+            alert("Please create an account or sign in before submitting your score.");
+            return;
+        }
 
-    const url =
-        `https://dreamlo.com/lb/${DREAMLO_PUBLIC_KEY}/add/${safeName}/${score}`;
+        const currentScore =
+            Math.floor(Number(gameState.joules));
 
+        if (
+            !Number.isFinite(currentScore) ||
+            currentScore < 0
+        ) {
+            alert("Invalid score.");
+            return;
+        }
 
-    try {
+        try {
 
-        await fetch(url);
+            const playerRef =
+                doc(db, "leaderboard", user.uid);
 
+            const existingSnapshot =
+                await getDoc(playerRef);
 
-        alert(
-            "Score submitted!"
-        );
+            if (!existingSnapshot.exists()) {
+                alert("Your account profile is missing. Please sign out and sign in again.");
+                return;
+            }
 
+            const existingData =
+                existingSnapshot.data();
 
-        loadLeaderboard();
+            const existingScore =
+                typeof existingData.score === "number"
+                    ? existingData.score
+                    : 0;
 
-    } catch (error) {
+            if (currentScore > existingScore) {
 
-        alert(
-            "Could not submit score."
-        );
+                await setDoc(
+                    playerRef,
+                    {
+                        uid: user.uid,
+                        username: existingData.username,
+                        score: currentScore,
+                        updatedAt: serverTimestamp()
+                    },
+                    { merge: true }
+                );
+
+                alert("Score updated!");
+
+            } else {
+
+                alert("Your existing leaderboard score is higher, so it was kept.");
+
+            }
+
+            await loadLeaderboard();
+
+        } catch (error) {
+
+            console.error(
+                "Firebase score submission error:",
+                error
+            );
+
+            alert(
+                "Could not update your score. Check your Firebase Authentication and Firestore rules."
+            );
+
+        }
 
     }
 
-}
+
+    /* =========================================================
+       BUTTON
+    ========================================================= */
+
+    submitScoreButton.addEventListener(
+        "click",
+        submitScore
+    );
 
 
-/* =========================================================
-   START GAME
-========================================================= */
+    /*
+       Expose these functions only in case other parts of
+       the page need to call them.
+    */
 
-loadGame();
+    window.loadLeaderboard =
+        loadLeaderboard;
 
-renderUpgrades();
+    window.submitScore =
+        submitScore;
 
-renderFacilities();
 
-renderSkins();
+    /* =========================================================
+       INITIAL LEADERBOARD LOAD
+    ========================================================= */
 
-updateUI();
-
-loadLeaderboard();
+    loadLeaderboard();
 
 </script>
-
 </body>
 </html>
