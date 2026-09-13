@@ -421,6 +421,34 @@ button:hover {
         height: 110px;
     }
 }
+
+        button:disabled, .upgrade.anti-cheat-disabled, .skin.anti-cheat-disabled {
+            opacity: 0.45 !important;
+            filter: grayscale(1);
+            cursor: not-allowed !important;
+        }
+
+        #clicker.anti-cheat-disabled {
+            opacity: 0.45;
+            filter: grayscale(1);
+            cursor: not-allowed;
+        }
+
+        .skin.anti-cheat-disabled {
+            pointer-events: none;
+        }
+
+        .ban-status {
+            display: none;
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            background: #3b2430;
+            border: 1px solid #f38ba8;
+            color: #f38ba8;
+            font-size: 13px;
+            line-height: 1.4;
+        }
 </style>
 </head>
 
@@ -499,6 +527,7 @@ button:hover {
                 <button id="signOutButton" type="button" style="display:none;">Sign Out</button>
             </div>
             <div id="authError" class="auth-error"></div>
+            <div id="banStatus" class="ban-status"></div>
         </div>
 
         <div class="leaderboard">
@@ -519,6 +548,7 @@ button:hover {
         </div>
 
         <button
+            id="resetGameButton"
             class="reset-button"
             onclick="resetGame()"
         >
@@ -877,12 +907,145 @@ function playAudio(audio) {
 
 
 /* =========================================================
+   ANTI-CHEAT
+========================================================= */
+
+/*
+   If more than 25 clicks are detected inside a rolling one-second
+   window, the player is temporarily punished for one hour.
+
+   This is a client-side anti-cheat check. It is useful against
+   ordinary auto-clickers, but it cannot be made fully cheat-proof
+   while the game logic runs in the player's browser.
+*/
+
+const ANTI_CHEAT_CPS_LIMIT = 25;
+const ANTI_CHEAT_WINDOW_MS = 1000;
+const ANTI_CHEAT_PUNISHMENT_MS = 60 * 60 * 1000;
+const ANTI_CHEAT_STORAGE_KEY = "steyerAntiCheatPunishmentUntil";
+
+let recentClicks = [];
+let antiCheatPunishmentUntil = Number(
+    localStorage.getItem(ANTI_CHEAT_STORAGE_KEY) || 0
+);
+
+/* Firebase is the source of truth for account bans. */
+let firebaseBanUntil = 0;
+let firebaseBanReason = "";
+let firebaseBanListenerActive = false;
+
+function isAntiCheatPunished() {
+    const localPunished = antiCheatPunishmentUntil > Date.now();
+    const firebasePunished = firebaseBanUntil > Date.now();
+
+    if (!localPunished && antiCheatPunishmentUntil !== 0) {
+        antiCheatPunishmentUntil = 0;
+        localStorage.removeItem(ANTI_CHEAT_STORAGE_KEY);
+    }
+
+    return localPunished || firebasePunished;
+}
+
+function getPunishmentUntil() {
+    return Math.max(
+        antiCheatPunishmentUntil || 0,
+        firebaseBanUntil || 0
+    );
+}
+
+function applyAntiCheatLockState() {
+    const punished = isAntiCheatPunished();
+
+    document.querySelectorAll("button, .upgrade, .skin").forEach(element => {
+        /* Keep account controls and Reset Game usable while banned. */
+        const isAccountControl =
+            element.id === "createAccountButton" ||
+            element.id === "signInButton" ||
+            element.id === "signOutButton";
+
+        if (element.id === "resetGameButton" || isAccountControl) {
+            element.classList.remove("anti-cheat-disabled");
+            element.setAttribute("aria-disabled", "false");
+            return;
+        }
+
+        element.disabled = punished;
+        element.classList.toggle("anti-cheat-disabled", punished);
+        element.setAttribute("aria-disabled", punished ? "true" : "false");
+    });
+
+    if (clicker) {
+        clicker.classList.toggle("anti-cheat-disabled", punished);
+        clicker.style.pointerEvents = punished ? "none" : "";
+        clicker.setAttribute("aria-disabled", punished ? "true" : "false");
+    }
+
+    return punished;
+}
+
+function punishForSpeedClicking() {
+    antiCheatPunishmentUntil =
+        Date.now() + ANTI_CHEAT_PUNISHMENT_MS;
+
+    localStorage.setItem(
+        ANTI_CHEAT_STORAGE_KEY,
+        String(antiCheatPunishmentUntil)
+    );
+
+    recentClicks = [];
+    applyAntiCheatLockState();
+
+    /* Ask the trusted Firebase backend to create the real ban. */
+    if (window.triggerFirebaseAntiCheatBan) {
+        window.triggerFirebaseAntiCheatBan().catch(error => {
+            console.error("Could not create Firebase ban:", error);
+        });
+    }
+
+    alert(
+        "Anti-cheat triggered. Clicking too quickly was detected. " +
+        "You cannot earn or submit scores for 1 hour."
+    );
+}
+
+function registerClickForAntiCheat() {
+    const now = Date.now();
+
+    recentClicks.push(now);
+
+    const cutoff = now - ANTI_CHEAT_WINDOW_MS;
+
+    recentClicks = recentClicks.filter(
+        timestamp => timestamp >= cutoff
+    );
+
+    if (recentClicks.length > ANTI_CHEAT_CPS_LIMIT) {
+        punishForSpeedClicking();
+        return false;
+    }
+
+    return true;
+}
+
+setInterval(() => {
+    applyAntiCheatLockState();
+}, 1000);
+
+/* =========================================================
    STEYER CLICK
 ========================================================= */
 
 clicker.addEventListener(
     "click",
     () => {
+
+        if (applyAntiCheatLockState()) {
+            return;
+        }
+
+        if (!registerClickForAntiCheat()) {
+            return;
+        }
 
         const skin =
             skins[gameState.selectedSkin];
@@ -1541,7 +1704,8 @@ setInterval(
     () => {
 
         if (
-            gameState.joulesPerSec > 0
+            gameState.joulesPerSec > 0 &&
+            !isAntiCheatPunished()
         ) {
 
             gameState.joules +=
@@ -1786,6 +1950,7 @@ renderFacilities();
 renderSkins();
 
 updateUI();
+applyAntiCheatLockState();
 
 </script>
 <script type="module">
@@ -1810,8 +1975,14 @@ updateUI();
         doc,
         getDoc,
         setDoc,
-        serverTimestamp
+        serverTimestamp,
+        onSnapshot
     } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+    import {
+        getFunctions,
+        httpsCallable
+    } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-functions.js";
 
 
     /* =========================================================
@@ -1856,6 +2027,9 @@ updateUI();
 
     const auth =
         getAuth(app);
+
+    const functions =
+        getFunctions(app);
 
 
     /* =========================================================
@@ -1988,6 +2162,7 @@ updateUI();
 
         if (!user) {
 
+            watchFirebaseBan(null);
             authStatus.textContent = "Not signed in";
             authStatus.classList.remove("signed-in");
             usernameInput.disabled = false;
@@ -2326,6 +2501,20 @@ updateUI();
     ========================================================= */
 
     async function submitScore() {
+
+        if (isAntiCheatPunished()) {
+            const remaining = Math.max(
+                1,
+                Math.ceil(
+                    (getPunishmentUntil() - Date.now()) / 60000
+                )
+            );
+
+            alert(
+                `Anti-cheat punishment active. Please wait about ${remaining} minute${remaining === 1 ? "" : "s"} before submitting a score.`
+            );
+            return;
+        }
 
         const user = auth.currentUser;
 
